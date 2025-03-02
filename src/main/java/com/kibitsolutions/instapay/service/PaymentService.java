@@ -40,6 +40,34 @@ public class PaymentService {
         this.kafkaTemplate = kafkaTemplate;
     }
 
+    /**
+     * Processes a payment transaction from one account to another.
+     * <p>
+     * This method performs the following steps:
+     * <ol>
+     *   <li>Retrieves the sender and recipient accounts from the repository.</li>
+     *   <li>Checks if the sender has sufficient funds and that sender and recipient are not the same.</li>
+     *   <li>Deducts the amount from the sender's balance and credits it to the recipient's balance.</li>
+     *   <li>Saves the updated account information.</li>
+     *   <li>Creates and saves a Transaction record.</li>
+     *   <li>Sends a TransactionEvent message via Kafka for asynchronous notification.</li>
+     * </ol>
+     * <p>
+     * This method is annotated with:
+     * <ul>
+     *   <li>{@code @Transactional} to ensure atomicity of database operations.</li>
+     *   <li>{@code @Retryable} to retry the operation up to 5 times (with a 5000ms delay) on failure,
+     *       except in cases of InsufficientFundsException or AccountNotFoundException.</li>
+     *   <li>{@code @CircuitBreaker} to prevent cascading failures, with fallback method {@code fallbackProcessPayment}.</li>
+     * </ul>
+     *
+     * @param fromAccountId the ID of the sender account
+     * @param toAccountId   the ID of the recipient account
+     * @param amount        the amount to transfer
+     * @return the Transaction record representing the processed payment
+     * @throws InsufficientFundsException if the sender does not have enough balance
+     * @throws AccountNotFoundException   if either the sender or recipient account is not found
+     */
     @Transactional
     @Retryable(maxAttempts = 5,
             backoff = @Backoff(delay = 5000),
@@ -85,10 +113,27 @@ public class PaymentService {
         return transaction;
     }
 
+    /**
+     * Retrieves a transaction by its ID.
+     *
+     * @param id the ID of the transaction to retrieve
+     * @return an Optional containing the Transaction if found, or empty if not found
+     */
     public Optional<Transaction> getTransactionById(Long id) {
         return transactionRepo.findById(id);
     }
 
+    /**
+     * Fallback method for processPayment.
+     * <p>
+     * This method is called when processPayment fails after all retry attempts or when the circuit breaker is open.
+     *
+     * @param ex             the exception that triggered the fallback
+     * @param fromAccountId  the sender account ID
+     * @param toAccountId    the recipient account ID
+     * @param amount         the amount that was attempted to be transferred
+     * @return a Transaction object indicating a failed operation (amount is set to zero)
+     */
     @Recover
     public Transaction fallbackProcessPayment(
             Exception ex,
@@ -105,6 +150,13 @@ public class PaymentService {
         return failedTx;
     }
 
+    /**
+     * Retrieves the balance of the account identified by the given account ID.
+     *
+     * @param accountId the ID of the account
+     * @return the balance of the account as a BigDecimal
+     * @throws AccountNotFoundException if the account with the specified ID does not exist
+     */
     public BigDecimal getAccountBalance(String accountId) {
         Account account = accountRepo.findById(accountId)
                 .orElseThrow(() -> new AccountNotFoundException("Account not found: " + accountId));
