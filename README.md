@@ -20,7 +20,7 @@ The **InstaPay API** service is a Spring Boot-based RESTful application that all
 - **Database**: PostgreSQL
 - **Messaging**: Apache Kafka
 - **Containerization**: Docker (with docker-compose)
-- **Testing**: Unit, integration, and end-to-end tests (using Testcontainers)
+- **Testing**: Unit, integration, resilience, and end-to-end tests (using Testcontainers)
 
 ## Getting Started
 
@@ -37,7 +37,7 @@ git clone https://github.com/jkarcsi/insta-pay.git
 cd insta-pay
 
 ## Build the Project
-```sh
+
 mvn clean install
 ```
 
@@ -82,6 +82,12 @@ The API will be accessible at [http://localhost:8080](http://localhost:8080).
 
 **Description:** Retrieves the balance for a specific account.
 
+## Logging
+This application uses **SLF4J** and **Logback** for logging. The class-level logs are injected via Lombok’s `@Slf4j` annotation, which automatically provides a `log` field in each class (e.g., `PaymentService`). You can customize the log pattern, level, and other details in one of two ways:
+
+1. **Via `logback-spring.xml`** (recommended for more complex setups).
+2. **Via `application.properties`** using `logging.pattern.console` for quick pattern adjustments.
+
 ## API Documentation
 Swagger/OpenAPI documentation is generated automatically. Access the Swagger UI at:
 
@@ -93,6 +99,7 @@ The project includes:
 - **Unit Tests:** For individual service methods and business logic.
 - **Integration Tests:** Using Testcontainers to run PostgreSQL and Kafka.
 - **End-to-End (E2E) Tests:** To validate the full workflow from REST endpoints to database and messaging.
+- **Resilience Tests:** Includes scenarios for retry and circuit breaker handling.
 
 To run the tests:
 

@@ -8,6 +8,7 @@ import com.kibitsolutions.instapay.domain.repository.TransactionRepository;
 import com.kibitsolutions.instapay.exception.AccountNotFoundException;
 import com.kibitsolutions.instapay.exception.InsufficientFundsException;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.retry.annotation.Backoff;
@@ -21,6 +22,7 @@ import java.time.Instant;
 import java.util.Optional;
 
 @Service
+@Slf4j
 public class PaymentService {
 
     @Autowired
@@ -47,9 +49,9 @@ public class PaymentService {
      * <ol>
      *   <li>Retrieves the sender and recipient accounts from the repository.</li>
      *   <li>Checks if the sender has sufficient funds and that sender and recipient are not the same.</li>
+     *   <li>Creates and saves a Transaction record.</li>
      *   <li>Deducts the amount from the sender's balance and credits it to the recipient's balance.</li>
      *   <li>Saves the updated account information.</li>
-     *   <li>Creates and saves a Transaction record.</li>
      *   <li>Sends a TransactionEvent message via Kafka for asynchronous notification.</li>
      * </ol>
      * <p>
@@ -68,38 +70,59 @@ public class PaymentService {
      * @throws InsufficientFundsException if the sender does not have enough balance
      * @throws AccountNotFoundException   if either the sender or recipient account is not found
      */
-    @Transactional
-    @Retryable(maxAttempts = 5,
+    @Transactional(rollbackFor = {Exception.class})
+    @Retryable(
+            maxAttempts = 5,
             backoff = @Backoff(delay = 5000),
-            noRetryFor = {InsufficientFundsException.class, AccountNotFoundException.class})
-    @CircuitBreaker(name = "paymentServiceCircuitBreaker", fallbackMethod = "fallbackProcessPaymentCircuitBreaker")
+            noRetryFor = {InsufficientFundsException.class, AccountNotFoundException.class},
+            notRecoverable = {InsufficientFundsException.class, AccountNotFoundException.class}
+    )
+    @CircuitBreaker(
+            name = "paymentServiceCircuitBreaker",
+            fallbackMethod = "fallbackProcessPaymentCircuitBreaker"
+    )
     public Transaction processPayment(String fromAccountId, String toAccountId, BigDecimal amount) {
+
+        log.info("Starting to process payment from '{}' to '{}' with amount: {}",
+                fromAccountId, toAccountId, amount);
+
         Account from = accountRepo.findById(fromAccountId)
                 .orElseThrow(() -> new AccountNotFoundException("Sender account not found: " + fromAccountId));
+        log.debug("Sender account found: {} with balance: {}", from.getId(), from.getBalance());
 
         Account to = accountRepo.findById(toAccountId)
                 .orElseThrow(() -> new AccountNotFoundException("Recipient account not found: " + toAccountId));
+        log.debug("Recipient account found: {} with balance: {}", to.getId(), to.getBalance());
 
-        // Balance check
-        if (from.getBalance().compareTo(amount) < 0) {
-            throw new InsufficientFundsException("Insufficient balance in sender account: " + fromAccountId);
-        }
         // Account check
         if (from.getId().equals(to.getId())) {
-            throw new IllegalArgumentException("Sender and recipient account are the same!");
+            log.warn("Attempted to transfer to the same account: {}", fromAccountId);
+            throw new IllegalArgumentException("Sender and recipient account are the same: " + fromAccountId);
         }
+        // Balance check
+        if (from.getBalance().compareTo(amount) < 0) {
+            log.warn("Insufficient balance in sender account: {} (current balance: {}, required: {})",
+                    fromAccountId, from.getBalance(), amount);
+            throw new InsufficientFundsException("Insufficient balance in sender account: " + fromAccountId);
+        }
+
+        // Record the transaction
+        Transaction transaction = new Transaction(from.getId(), to.getId(), amount, Instant.now());
+        // Save the transaction
+        transactionRepo.save(transaction);
+        log.debug("Transaction record saved with ID: {}", transaction.getId());
 
         // Deduct and credit
         from.setBalance(from.getBalance().subtract(amount));
+        log.debug("Deducted {} from sender's balance, new balance: {}", amount, from.getBalance());
+
         to.setBalance(to.getBalance().add(amount));
+        log.debug("Credited {} to recipient's balance, new balance: {}", amount, to.getBalance());
 
         // Save updated accounts
         accountRepo.save(from);
         accountRepo.save(to);
-
-        // Record the transaction
-        Transaction transaction = new Transaction(from.getId(), to.getId(), amount, Instant.now());
-        transactionRepo.save(transaction);
+        log.info("Account balances updated. Sender: {}, Recipient: {}", from.getBalance(), to.getBalance());
 
         // Publish event for notification
         TransactionEvent event = new TransactionEvent(
@@ -109,7 +132,10 @@ public class PaymentService {
                 amount
         );
         kafkaTemplate.send("payments", event);
+        log.info("Published Kafka event for transaction ID: {}", transaction.getId());
 
+        log.info("Payment from '{}' to '{}' completed successfully (Transaction ID: {})",
+                fromAccountId, toAccountId, transaction.getId());
         return transaction;
     }
 
@@ -120,7 +146,13 @@ public class PaymentService {
      * @return an Optional containing the Transaction if found, or empty if not found
      */
     public Optional<Transaction> getTransactionById(Long id) {
-        return transactionRepo.findById(id);
+        log.debug("Fetching transaction by ID: {}", id);
+        Optional<Transaction> tx = transactionRepo.findById(id);
+        tx.ifPresentOrElse(
+                transaction -> log.debug("Transaction found for ID: {}", id),
+                () -> log.debug("No transaction found for ID: {}", id)
+        );
+        return tx;
     }
 
     /**
@@ -136,7 +168,7 @@ public class PaymentService {
      * @return a Transaction object representing a failed transaction (with the amount set to zero)
      */
     public Transaction fallbackProcessPaymentCircuitBreaker(String fromAccountId, String toAccountId, BigDecimal amount, Throwable throwable) {
-        System.err.println("Circuit Breaker fallback triggered: " + throwable.getMessage());
+        log.info("Circuit Breaker fallback triggered: {}", throwable.getMessage());
 
         Transaction failedTx = new Transaction();
         failedTx.setFromAccountId(fromAccountId);
@@ -159,7 +191,7 @@ public class PaymentService {
      */
     @Recover
     public Transaction fallbackProcessPayment(Exception ex, String fromAccountId, String toAccountId, BigDecimal amount) {
-        System.err.println("Retry fallback triggered: " + ex.getMessage());
+        log.info("Retry fallback triggered: {}", ex.getMessage());
 
         Transaction failedTx = new Transaction();
         failedTx.setFromAccountId(fromAccountId);
@@ -177,8 +209,10 @@ public class PaymentService {
      * @throws AccountNotFoundException if the account with the specified ID does not exist
      */
     public BigDecimal getAccountBalance(String accountId) {
+        log.debug("Fetching balance for account: {}", accountId);
         Account account = accountRepo.findById(accountId)
                 .orElseThrow(() -> new AccountNotFoundException("Account not found: " + accountId));
+        log.debug("Account found: {}, balance: {}", accountId, account.getBalance());
         return account.getBalance();
     }
 
