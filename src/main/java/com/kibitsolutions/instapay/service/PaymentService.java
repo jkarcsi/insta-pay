@@ -72,7 +72,7 @@ public class PaymentService {
     @Retryable(maxAttempts = 5,
             backoff = @Backoff(delay = 5000),
             noRetryFor = {InsufficientFundsException.class, AccountNotFoundException.class})
-    @CircuitBreaker(name = "paymentServiceCircuitBreaker", fallbackMethod = "fallbackProcessPayment")
+    @CircuitBreaker(name = "paymentServiceCircuitBreaker", fallbackMethod = "fallbackProcessPaymentCircuitBreaker")
     public Transaction processPayment(String fromAccountId, String toAccountId, BigDecimal amount) {
         Account from = accountRepo.findById(fromAccountId)
                 .orElseThrow(() -> new AccountNotFoundException("Sender account not found: " + fromAccountId));
@@ -124,29 +124,48 @@ public class PaymentService {
     }
 
     /**
-     * Fallback method for processPayment.
+     * Fallback method for the Circuit Breaker when {@code processPayment} fails.
      * <p>
-     * This method is called when processPayment fails after all retry attempts or when the circuit breaker is open.
+     * This method is invoked by Resilience4j's Circuit Breaker if the {@code processPayment} method
+     * fails or the circuit is open.
      *
-     * @param ex             the exception that triggered the fallback
-     * @param fromAccountId  the sender account ID
-     * @param toAccountId    the recipient account ID
-     * @param amount         the amount that was attempted to be transferred
-     * @return a Transaction object indicating a failed operation (amount is set to zero)
+     * @param fromAccountId the ID of the sender account
+     * @param toAccountId   the ID of the recipient account
+     * @param amount        the amount that was attempted to be transferred
+     * @param throwable     the exception that triggered the fallback
+     * @return a Transaction object representing a failed transaction (with the amount set to zero)
      */
-    @Recover
-    public Transaction fallbackProcessPayment(
-            Exception ex,
-            String fromAccountId,
-            String toAccountId,
-            BigDecimal amount
-    ) {
-        System.err.println("fallbackProcessPayment triggered: " + ex.getMessage());
+    public Transaction fallbackProcessPaymentCircuitBreaker(String fromAccountId, String toAccountId, BigDecimal amount, Throwable throwable) {
+        System.err.println("Circuit Breaker fallback triggered: " + throwable.getMessage());
 
         Transaction failedTx = new Transaction();
         failedTx.setFromAccountId(fromAccountId);
         failedTx.setToAccountId(toAccountId);
         failedTx.setAmount(BigDecimal.ZERO);
+
+        return failedTx;
+    }
+
+    /**
+     * Fallback method for Spring Retry when {@code processPayment} fails after all retry attempts.
+     * <p>
+     * This method is invoked by Spring Retry's recovery mechanism.
+     *
+     * @param ex            the exception that caused the failure
+     * @param fromAccountId the ID of the sender account
+     * @param toAccountId   the ID of the recipient account
+     * @param amount        the amount that was attempted to be transferred
+     * @return a Transaction object representing a failed transaction (with the amount set to zero)
+     */
+    @Recover
+    public Transaction fallbackProcessPayment(Exception ex, String fromAccountId, String toAccountId, BigDecimal amount) {
+        System.err.println("Retry fallback triggered: " + ex.getMessage());
+
+        Transaction failedTx = new Transaction();
+        failedTx.setFromAccountId(fromAccountId);
+        failedTx.setToAccountId(toAccountId);
+        failedTx.setAmount(BigDecimal.ZERO);
+
         return failedTx;
     }
 
