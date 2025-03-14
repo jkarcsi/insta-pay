@@ -6,6 +6,7 @@ import com.kibitsolutions.instapay.domain.model.TransactionEvent;
 import com.kibitsolutions.instapay.domain.repository.AccountRepository;
 import com.kibitsolutions.instapay.domain.repository.TransactionRepository;
 import com.kibitsolutions.instapay.exception.AccountNotFoundException;
+import com.kibitsolutions.instapay.exception.IdenticalAccountException;
 import com.kibitsolutions.instapay.exception.InsufficientFundsException;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import lombok.extern.slf4j.Slf4j;
@@ -25,15 +26,13 @@ import java.util.Optional;
 @Slf4j
 public class PaymentService {
 
-    @Autowired
-    private AccountRepository accountRepo;
+    private final AccountRepository accountRepo;
+
+    private final TransactionRepository transactionRepo;
+
+    private final KafkaTemplate<String, TransactionEvent> kafkaTemplate;
 
     @Autowired
-    private TransactionRepository transactionRepo;
-
-    @Autowired
-    private KafkaTemplate<String, TransactionEvent> kafkaTemplate;
-
     public PaymentService(AccountRepository accountRepo,
                           TransactionRepository transactionRepo,
                           KafkaTemplate<String, TransactionEvent> kafkaTemplate) {
@@ -74,8 +73,8 @@ public class PaymentService {
     @Retryable(
             maxAttempts = 5,
             backoff = @Backoff(delay = 5000),
-            noRetryFor = {InsufficientFundsException.class, AccountNotFoundException.class},
-            notRecoverable = {InsufficientFundsException.class, AccountNotFoundException.class}
+            noRetryFor = {InsufficientFundsException.class, AccountNotFoundException.class, IdenticalAccountException.class},
+            notRecoverable = {InsufficientFundsException.class, AccountNotFoundException.class, IdenticalAccountException.class}
     )
     @CircuitBreaker(
             name = "paymentServiceCircuitBreaker",
@@ -97,7 +96,7 @@ public class PaymentService {
         // Account check
         if (from.getId().equals(to.getId())) {
             log.warn("Attempted to transfer to the same account: {}", fromAccountId);
-            throw new IllegalArgumentException("Sender and recipient account are the same: " + fromAccountId);
+            throw new IdenticalAccountException("Sender and recipient account are the same: " + fromAccountId);
         }
         // Balance check
         if (from.getBalance().compareTo(amount) < 0) {

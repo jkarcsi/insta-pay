@@ -23,7 +23,7 @@ public class RetryListenerConfig {
                 RetryContext context,
                 RetryCallback<T, E> callback
         ) {
-            log.info("The retry process is about to start.");
+            log.info("Payment process is about to start.");
             return true;
         }
 
@@ -34,7 +34,7 @@ public class RetryListenerConfig {
                 Throwable throwable
         ) {
             int retryCount = context.getRetryCount();
-            log.error("Attempt #{} failed with exception: {}", retryCount, throwable.getMessage());
+            log.error("Payment retry attempt #{} failed with exception: {}", retryCount, throwable.getMessage());
         }
 
         @Override
@@ -44,9 +44,9 @@ public class RetryListenerConfig {
                 Throwable throwable
         ) {
             if (throwable == null) {
-                log.info("The retry process concluded successfully.");
+                log.info("The payment process concluded successfully.");
             } else {
-                log.error("The retry process ended after exhausting attempts. Final error: {}",
+                log.error("The payment retry process ended after exhausting attempts. Final error: {}",
                         throwable.getMessage());
             }
         }

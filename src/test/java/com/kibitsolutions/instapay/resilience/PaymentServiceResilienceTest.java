@@ -119,7 +119,7 @@ class PaymentServiceResilienceTest {
         AtomicInteger counter = new AtomicInteger(0);
         AtomicInteger exceptionsThrown = new AtomicInteger(0);
 
-        // Retrieve the circuit breaker instance by name and transition it to close state
+        // Retrieve the circuit breaker instance by name and transition it to closed state
         CircuitBreaker circuitBreaker = circuitBreakerRegistry.circuitBreaker("paymentServiceCircuitBreaker");
         circuitBreaker.transitionToClosedState();
 
@@ -144,6 +144,52 @@ class PaymentServiceResilienceTest {
         assertEquals(BigDecimal.valueOf(800), sender.getBalance());
         assertTrue(counter.get() >= 3);
         assertTrue(exceptionsThrown.get() >= 1);
+    }
+
+    /**
+     * Simulate transient errors for more attempts than the maximum set.
+     * This verifies that retry logic recovers eventually.
+     */
+    @Test
+    void testProcessPayment_RetryFail() {
+        Account sender = new Account();
+        sender.setId("acc1");
+        sender.setBalance(BigDecimal.valueOf(1000));
+        Account recipient = new Account();
+        recipient.setId("acc2");
+        recipient.setBalance(BigDecimal.valueOf(500));
+
+        when(accountRepo.findById("acc1")).thenReturn(Optional.of(sender));
+        when(accountRepo.findById("acc2")).thenReturn(Optional.of(recipient));
+
+        AtomicInteger counter = new AtomicInteger(0);
+        AtomicInteger exceptionsThrown = new AtomicInteger(0);
+
+        // Retrieve the circuit breaker instance by name and transition it to closed state
+        CircuitBreaker circuitBreaker = circuitBreakerRegistry.circuitBreaker("paymentServiceCircuitBreaker");
+        circuitBreaker.transitionToClosedState();
+
+        when(transactionRepo.save(any(Transaction.class))).thenAnswer(invocation -> {
+            if (counter.getAndIncrement() < 6) {
+                // Simulate transient error on first two attempts.
+                exceptionsThrown.incrementAndGet();
+                throw new RuntimeException("Transient error");
+            }
+            Transaction tx = invocation.getArgument(0);
+            tx.setId(1L);
+            return tx;
+        });
+
+        Transaction result = paymentService.processPayment("acc1", "acc2", BigDecimal.valueOf(200));
+
+        // Verify that the payment eventually succeeded.
+        assertNotNull(result);
+        assertEquals("acc1", result.getFromAccountId());
+        assertEquals("acc2", result.getToAccountId());
+        assertEquals(BigDecimal.valueOf(500), recipient.getBalance());
+        assertEquals(BigDecimal.valueOf(1000), sender.getBalance());
+        assertTrue(counter.get() >= 5);
+        assertTrue(exceptionsThrown.get() >= 2);
     }
 
 }

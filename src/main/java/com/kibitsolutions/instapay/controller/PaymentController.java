@@ -6,7 +6,6 @@ import com.kibitsolutions.instapay.service.PaymentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -19,18 +18,20 @@ import java.math.BigDecimal;
 @Tag(name = "Controller")
 public class PaymentController {
 
+    private final PaymentService paymentService;
+
     @Autowired
-    private PaymentService paymentService;
+    public PaymentController(PaymentService paymentService) {
+        this.paymentService = paymentService;
+    }
 
     @Operation(
             summary = "Transfer money between accounts",
             description = "Transfers a certain amount from one account to another, if balance is sufficient."
     )
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Transfer successful"),
-            @ApiResponse(responseCode = "400", description = "Insufficient funds or invalid request data"),
-            @ApiResponse(responseCode = "404", description = "Account not found")
-    })
+    @ApiResponse(responseCode = "200", description = "Transfer successful")
+    @ApiResponse(responseCode = "400", description = "Insufficient funds or invalid request data")
+    @ApiResponse(responseCode = "404", description = "Account not found")
     @PostMapping("/transfer")
     public ResponseEntity<Transaction> transfer(@RequestBody @Valid TransferRequest req) {
         Transaction tx = paymentService.processPayment(
@@ -45,10 +46,8 @@ public class PaymentController {
             summary = "Get transaction by ID",
             description = "Retrieves details of a specific transaction by its ID."
     )
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Transaction found"),
-            @ApiResponse(responseCode = "404", description = "Transaction not found")
-    })
+    @ApiResponse(responseCode = "200", description = "Transaction found")
+    @ApiResponse(responseCode = "404", description = "Transaction not found")
     @GetMapping("/transactions/{id}")
     public ResponseEntity<Transaction> getTransaction(@PathVariable Long id) {
         Transaction tx = paymentService.getTransactionById(id)
@@ -60,10 +59,8 @@ public class PaymentController {
             summary = "Get balance by account ID",
             description = "Retrieves the balance of a specific account by account ID."
     )
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Account found"),
-            @ApiResponse(responseCode = "404", description = "Account not found")
-    })
+    @ApiResponse(responseCode = "200", description = "Account found")
+    @ApiResponse(responseCode = "404", description = "Account not found")
     @GetMapping("/account/{accountId}/balance")
     public ResponseEntity<BigDecimal> getAccountBalance(@PathVariable String accountId) {
         BigDecimal balance = paymentService.getAccountBalance(accountId);
