@@ -1,0 +1,12 @@
+<settings>
+    <mirrors>
+        <mirror>
+            <id>central</id>
+            <mirrorOf>*</mirrorOf>
+            <url>https://repo.maven.apache.org/maven2</url>
+        </mirror>
+    </mirrors>
+
+    <proxies>
+    </proxies>
+</settings>
