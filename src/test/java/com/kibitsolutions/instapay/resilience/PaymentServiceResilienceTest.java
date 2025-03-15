@@ -113,8 +113,8 @@ class PaymentServiceResilienceTest {
         recipient.setId("acc2");
         recipient.setBalance(BigDecimal.valueOf(500));
 
-        when(accountRepo.findById("acc1")).thenReturn(Optional.of(sender));
-        when(accountRepo.findById("acc2")).thenReturn(Optional.of(recipient));
+        when(accountRepo.findByIdForTransaction("acc1")).thenReturn(Optional.of(sender));
+        when(accountRepo.findByIdForTransaction("acc2")).thenReturn(Optional.of(recipient));
 
         AtomicInteger counter = new AtomicInteger(0);
         AtomicInteger exceptionsThrown = new AtomicInteger(0);
@@ -159,8 +159,8 @@ class PaymentServiceResilienceTest {
         recipient.setId("acc2");
         recipient.setBalance(BigDecimal.valueOf(500));
 
-        when(accountRepo.findById("acc1")).thenReturn(Optional.of(sender));
-        when(accountRepo.findById("acc2")).thenReturn(Optional.of(recipient));
+        when(accountRepo.findByIdForTransaction("acc1")).thenReturn(Optional.of(sender));
+        when(accountRepo.findByIdForTransaction("acc2")).thenReturn(Optional.of(recipient));
 
         AtomicInteger counter = new AtomicInteger(0);
         AtomicInteger exceptionsThrown = new AtomicInteger(0);

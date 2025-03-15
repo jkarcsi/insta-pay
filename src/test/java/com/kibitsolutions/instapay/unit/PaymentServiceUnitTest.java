@@ -44,8 +44,8 @@ class PaymentServiceUnitTest {
         recipient.setId("acc2");
         recipient.setBalance(BigDecimal.valueOf(500));
 
-        when(accountRepository.findById("acc1")).thenReturn(Optional.of(sender));
-        when(accountRepository.findById("acc2")).thenReturn(Optional.of(recipient));
+        when(accountRepository.findByIdForTransaction("acc1")).thenReturn(Optional.of(sender));
+        when(accountRepository.findByIdForTransaction("acc2")).thenReturn(Optional.of(recipient));
         // Simulating save transaction: setting ID
         when(transactionRepository.save(any(Transaction.class))).thenAnswer(invocation -> {
             Transaction tx = invocation.getArgument(0);
@@ -79,8 +79,8 @@ class PaymentServiceUnitTest {
         recipient.setId("acc2");
         recipient.setBalance(BigDecimal.valueOf(500));
 
-        when(accountRepository.findById("acc1")).thenReturn(Optional.of(sender));
-        when(accountRepository.findById("acc2")).thenReturn(Optional.of(recipient));
+        when(accountRepository.findByIdForTransaction("acc1")).thenReturn(Optional.of(sender));
+        when(accountRepository.findByIdForTransaction("acc2")).thenReturn(Optional.of(recipient));
 
         assertThrows(InsufficientFundsException.class,
                 () -> paymentService.processPayment("acc1", "acc2", BigDecimal.valueOf(200)));
@@ -88,7 +88,7 @@ class PaymentServiceUnitTest {
 
     @Test
     void testProcessPayment_SenderNotFound() {
-        when(accountRepository.findById("acc1")).thenReturn(Optional.empty());
+        when(accountRepository.findByIdForTransaction("acc1")).thenReturn(Optional.empty());
         assertThrows(AccountNotFoundException.class,
                 () -> paymentService.processPayment("acc1", "acc2", BigDecimal.valueOf(100)));
     }

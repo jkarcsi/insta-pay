@@ -85,11 +85,11 @@ public class PaymentService {
         log.info("Starting to process payment from '{}' to '{}' with amount: {}",
                 fromAccountId, toAccountId, amount);
 
-        Account from = accountRepo.findById(fromAccountId)
+        Account from = accountRepo.findByIdForTransaction(fromAccountId)
                 .orElseThrow(() -> new AccountNotFoundException("Sender account not found: " + fromAccountId));
         log.debug("Sender account found: {} with balance: {}", from.getId(), from.getBalance());
 
-        Account to = accountRepo.findById(toAccountId)
+        Account to = accountRepo.findByIdForTransaction(toAccountId)
                 .orElseThrow(() -> new AccountNotFoundException("Recipient account not found: " + toAccountId));
         log.debug("Recipient account found: {} with balance: {}", to.getId(), to.getBalance());
 
